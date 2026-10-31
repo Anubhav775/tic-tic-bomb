@@ -7,10 +7,5 @@
     { "src": "avatar-bundle.js", "use": "@vercel/static" },
     { "src": "bomb.png", "use": "@vercel/static" },
     { "src": "api/ws.ts", "use": "@vercel/node" }
-  ],
-  "functions": {
-    "api/ws.ts": {
-      "maxDuration": 300
-    }
-  }
+  ]
 }

@@ -13,7 +13,7 @@ Open [http://localhost:8000](http://localhost:8000). Create a room and share its
 
 ## Deploy on Vercel
 
-Vercel serves the site files as static assets and exposes the Node WebSocket server at `/api/ws`. The client connects to that endpoint on the same origin. `vercel.json` explicitly maps static files and configures a 300-second function duration. `npm run build` also creates a local `dist/` copy.
+Vercel serves the site files as static assets and exposes the Node WebSocket server at `/api/ws`. The client connects to that endpoint on the same origin. `vercel.json` explicitly maps static files and the WebSocket function. `npm run build` also creates a local `dist/` copy.
 
 ## Multiplayer behavior
 
