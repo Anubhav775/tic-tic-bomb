@@ -183,7 +183,10 @@ wss.on("connection", socket => {
       room.lastPass = { seq: ++room.passSequence, fromId, toId: target.id };
       broadcast(room);
     } else if (message.type === "reset") {
-      if (player.id !== room.hostId || room.phase !== "final") return;
+      if (room.phase !== "final") {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "state", state: publicState(room) }));
+        return;
+      }
       clearTimeout(room.fuseTimer);
       clearTimeout(room.explosionTimer);
       room.players.forEach(current => { current.points = room.startingPoints; current.alive = true; });

@@ -72,7 +72,7 @@ function finalBoard() {
   const winner = ranked.find(player => player.alive) || ranked[0];
   const rows = ranked.map((player, index) => `<div class="scoreboard"><span>${index + 1}</span><span>${escapeHtml(player.name)}</span><span class="pts">${player.points}</span></div>`).join("");
   const winMessage = winner?.id === playerId ? "You won!" : `${winner?.name || ""} won!`;
-  return `<section class="screen">${titlebar()}${panel(`<div class="winner-panel"><div class="congrats">Congratulations</div><h2 class="winner">${escapeHtml(winner?.name || "")}</h2><div class="win-message">${escapeHtml(winMessage)}</div></div><div class="standings">${rows}</div>${state?.hostId === playerId ? `<button id="play-again" class="full">Play again</button>` : ""}`)}</section>`;
+  return `<section class="screen">${titlebar()}${panel(`<div class="winner-panel"><div class="congrats">Congratulations</div><h2 class="winner">${escapeHtml(winner?.name || "")}</h2><div class="win-message">${escapeHtml(winMessage)}</div></div><div class="standings">${rows}</div><button id="play-again" class="full">Play again</button>`)}</section>`;
 }
 function render() {
   app.innerHTML = (view === "home" ? home() : view === "setup" ? setup() : view === "lobby" ? lobby() : view === "game" ? game() : view === "explosion" ? explosion() : finalBoard()) + instructions();
@@ -269,7 +269,18 @@ function bind() {
     if (isAnimatingPass) return;
     send({ type: "pass", targetId: button.dataset.targetId });
   }));
-  document.querySelector("#play-again")?.addEventListener("click", () => send({ type: "reset" }));
+  document.querySelector("#play-again")?.addEventListener("click", event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Starting…";
+    send({ type: "reset" });
+    setTimeout(() => {
+      if (button.isConnected) {
+        button.disabled = false;
+        button.textContent = "Play again";
+      }
+    }, 5000);
+  });
 }
 render();
 document.addEventListener("visibilitychange", () => {
