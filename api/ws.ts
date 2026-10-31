@@ -1,3 +1,4 @@
-import server from "../server.js";
+import server from "../local-server.js";
 
 export default server;
+

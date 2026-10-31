@@ -1,7 +1,7 @@
 {
   "scripts": {
     "build": "esbuild avatar-widget.js --bundle --minify --platform=browser --format=iife --target=es2020 --outfile=avatar-bundle.js && node build.js",
-    "start": "node server.js"
+    "start": "node local-server.js"
   },
   "dependencies": {
     "avataaars": "^2.0.0",
