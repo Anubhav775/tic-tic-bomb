@@ -22,13 +22,24 @@ const looks = [
 ];
 
 window.AVATARS = looks;
-window.paintAvataaars = root => {
-  root.querySelectorAll("[data-avatar-render]").forEach(node => {
-    const look = looks[Number(node.dataset.avatarRender)] || looks[0];
+const avatarMarkupCache = new Map();
+function getAvatarMarkup(index) {
+  if (!avatarMarkupCache.has(index)) {
+    const look = looks[index] || looks[0];
+    const stagingNode = document.createElement("span");
     ReactDOM.render(React.createElement(Avatar, {
       ...look,
       avatarStyle: "Circle",
       style: { width: "100%", height: "100%" }
-    }), node);
+    }), stagingNode);
+    avatarMarkupCache.set(index, stagingNode.innerHTML);
+    ReactDOM.unmountComponentAtNode(stagingNode);
+  }
+  return avatarMarkupCache.get(index);
+}
+window.paintAvataaars = root => {
+  root.querySelectorAll("[data-avatar-render]").forEach(node => {
+    const index = Math.max(0, Math.min(looks.length - 1, Number(node.dataset.avatarRender) || 0));
+    node.innerHTML = getAvatarMarkup(index);
   });
 };

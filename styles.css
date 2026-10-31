@@ -61,7 +61,7 @@ input { width: 100%; height: 50px; border: 1px solid var(--border); border-radiu
 .setting input { height: 44px; }
 .full { width: 100%; }
 .board { position: relative; width: min(100%, 760px); aspect-ratio: 1; margin: 0 auto; display: block; }
-.board > .player-chip { position: absolute; z-index: 2; left: var(--x); top: var(--y); width: min(35%, 190px); transform: translate(-50%, -50%); }
+.board > .player-chip { position: absolute; z-index: 2; left: var(--x); top: var(--y); width: min(var(--chip-width, 35%), 190px); transform: translate(-50%, -50%); }
 .bomb-zone { display: flex; justify-content: center; align-items: center; min-height: 126px; margin: 12px 0; border-radius: 18px; }
 .center-bomb { grid-column: 1 / -1; }
 .avatar-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 2px; }
@@ -111,6 +111,10 @@ input { width: 100%; height: 50px; border: 1px solid var(--border); border-radiu
   .player-chip { gap: 4px; padding: 7px 8px; }
   .player-chip .avatar { width: 24px; height: 24px; }
   .mobile-bomb { width: 22px; height: 22px; }
+  .board > .player-chip[style*="--chip-width:29%"] { gap: 2px; padding: 5px; font-size: 12px; }
+  .board > .player-chip[style*="--chip-width:29%"] .avatar { width: 20px; height: 20px; }
+  .board > .player-chip[style*="--chip-width:29%"] .mobile-bomb { width: 18px; height: 18px; }
+  .board > .player-chip[style*="--chip-width:29%"] .score { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }

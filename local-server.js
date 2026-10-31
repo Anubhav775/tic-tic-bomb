@@ -29,6 +29,7 @@ const httpServer = http.createServer((request, response) => {
 });
 
 const wss = new WebSocketServer({ server: httpServer });
+const MAX_PLAYERS = 10;
 function publicState(room) {
   return {
     roomCode: room.code,
@@ -61,7 +62,7 @@ function makeCode() {
 function addPlayer(room, socket, data) {
   const name = normalizeName(data.name);
   if (!name) return sendError(socket, "Enter your name");
-  if (room.players.length >= 8) return sendError(socket, "Room is full");
+  if (room.players.length >= MAX_PLAYERS) return sendError(socket, `Room is full (max ${MAX_PLAYERS})`);
   const player = {
     id: randomUUID(), socket, name,
     avatar: Math.max(0, Math.min(19, Number(data.avatar) || 0)),
@@ -110,6 +111,8 @@ function scheduleFuse(room) {
   }, delay);
 }
 function closePlayer(socket) {
+  if (socket.roomClosed) return;
+  socket.roomClosed = true;
   const room = rooms.get(socket.roomCode);
   if (!room) return;
   room.players = room.players.filter(player => player.id !== socket.playerId);
@@ -157,7 +160,7 @@ wss.on("connection", socket => {
     if (!room || !player) return sendError(socket, "Join a room first");
     if (message.type === "start") {
       if (player.id !== room.hostId) return sendError(socket, "Only the host can start");
-      if (room.players.length < 3) return sendError(socket, "At least 3 players are needed");
+      if (room.players.length < 2) return sendError(socket, "At least 2 players are needed");
       room.startingPoints = Math.max(1, Math.min(999, Number(message.startingPoints) || 20));
       room.penaltyPoints = Math.max(1, Math.min(999, Number(message.penaltyPoints) || 5));
       room.players.forEach(current => { current.points = room.startingPoints; current.alive = true; });

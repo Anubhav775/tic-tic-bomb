@@ -43,22 +43,24 @@ function lobby() {
   const chips = players.map(player => `<div class="player-chip" style="background:${player.color}"><span class="avatar" data-avatar-render="${player.avatar}"></span><span class="name">${escapeHtml(player.name)}</span><span class="score">${player.id === state.hostId ? "Host" : ""}</span></div>`).join("");
   const isHost = state?.hostId === playerId;
   const shareUrl = `${location.origin}${location.pathname}?room=${state?.roomCode || ""}`;
-  return `<section class="screen">${titlebar()}${panel(`<div class="code-block"><strong class="room-code">${escapeHtml(state?.roomCode || roomCode)}</strong><button id="copy-code" class="secondary">Copy</button></div><div class="share-row"><button id="share-link" class="full secondary">Share link</button></div><div class="chips">${chips}</div>${isHost ? `<div class="settings"><label class="setting">Starting points<input id="starting" type="number" min="1" max="999" value="${state?.startingPoints || 20}"></label><label class="setting">Penalty<input id="penalty" type="number" min="1" max="999" value="${state?.penaltyPoints || 5}"></label></div><button id="start" class="full" ${players.length < 3 ? "disabled" : ""}>Start the Game</button>` : ""}${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}<span class="prototype-only">${escapeHtml(shareUrl)}</span>`)}</section>`;
+  return `<section class="screen">${titlebar()}${panel(`<div class="code-block"><strong class="room-code">${escapeHtml(state?.roomCode || roomCode)}</strong><button id="copy-code" class="secondary">Copy</button></div><div class="share-row"><button id="share-link" class="full secondary">Share link</button></div><div class="chips">${chips}</div>${isHost ? `<div class="settings"><label class="setting">Starting points<input id="starting" type="number" min="1" max="999" value="${state?.startingPoints || 20}"></label><label class="setting">Penalty<input id="penalty" type="number" min="1" max="999" value="${state?.penaltyPoints || 5}"></label></div><button id="start" class="full" ${players.length < 2 ? "disabled" : ""}>Start the Game</button>` : ""}${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}<span class="prototype-only">${escapeHtml(shareUrl)}</span>`)}</section>`;
 }
-function playerChip(player, index) {
+function playerChip(player, index, chipWidth) {
   const held = player.id === state.holderId;
   const interactive = player.alive && !held && !isAnimatingPass;
   const tag = interactive ? "button" : "div";
-  return `<${tag} class="player-chip ${held ? "holder" : ""}" data-player-id="${player.id}" style="--x:${player.x}%;--y:${player.y}%;background:${player.color}" ${interactive ? `data-target-id="${player.id}"` : ""}><span class="avatar" data-avatar-render="${player.avatar}"></span><span class="name">${escapeHtml(player.name)}</span>${held ? `<img class="mobile-bomb" src="bomb.png" alt="Bomb">` : ""}<span class="score">${player.points}</span></${tag}>`;
+  return `<${tag} class="player-chip ${held ? "holder" : ""}" data-player-id="${player.id}" style="--x:${player.x}%;--y:${player.y}%;--chip-width:${chipWidth}%;background:${player.color}" ${interactive ? `data-target-id="${player.id}"` : ""}><span class="avatar" data-avatar-render="${player.avatar}"></span><span class="name">${escapeHtml(player.name)}</span>${held ? `<img class="mobile-bomb" src="bomb.png" alt="Bomb">` : ""}<span class="score">${player.points}</span></${tag}>`;
 }
 function game() {
   const players = (state?.players || []).filter(player => player.alive);
   const count = players.length;
+  const radius = count >= 9 ? 44 : 39;
+  const chipWidth = count >= 9 ? 29 : count > 6 ? 31 : 35;
   const grid = players.map((player, index) => {
     const angle = 2 * Math.PI * index / count - Math.PI / 2;
-    player.x = 50 + 39 * Math.cos(angle);
-    player.y = 50 + 39 * Math.sin(angle);
-    return playerChip(player, index);
+    player.x = 50 + radius * Math.cos(angle);
+    player.y = 50 + radius * Math.sin(angle);
+    return playerChip(player, index, chipWidth);
   }).join("");
   return `<section class="screen game-screen">${titlebar()}${panel(`<div class="game-layout"><div class="board">${grid}</div></div>`, "game-panel")}</section>`;
 }

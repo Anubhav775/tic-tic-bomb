@@ -1,6 +1,6 @@
 # Tik Tik Bomb
 
-Real-time multiplayer bomb-passing game. Rooms use four-digit codes, support up to eight connected players, and sync lobby and game state through WebSockets.
+Real-time multiplayer bomb-passing game. Rooms use four-digit codes, support up to ten connected players, and sync lobby and game state through WebSockets.
 
 ## Run locally
 
@@ -9,7 +9,7 @@ npm install
 npm start
 ```
 
-Open [http://localhost:8000](http://localhost:8000). Create a room and share its four-digit code or room link. Other players enter the code or open the link and choose a nickname and avatar. The host can start once at least three players have joined.
+Open [http://localhost:8000](http://localhost:8000). Create a room and share its four-digit code or room link. Other players enter the code or open the link and choose a nickname and avatar. The host can start once at least two players have joined.
 
 ## Deploy on Vercel
 
