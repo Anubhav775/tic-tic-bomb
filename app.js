@@ -32,7 +32,7 @@ function home() {
 }
 function instructions() {
   if (!instructionsOpen) return "";
-  return `<div class="instructions-backdrop"><section class="instructions-card" role="dialog" aria-modal="true" aria-labelledby="instructions-title"><h2 id="instructions-title">कैसे खेलें</h2><ol><li>किसी खिलाड़ी पर टैप करके बम भेजो।</li><li>बम फूटे तो उसके पॉइंट घटेंगे।</li><li>आख़िरी बचा खिलाड़ी जीतेगा।</li></ol><button id="instructions-ok" class="full">OK</button></section></div>`;
+  return `<div class="instructions-backdrop"><section class="instructions-card" role="dialog" aria-modal="true" aria-labelledby="instructions-title"><h2 id="instructions-title">How to play</h2><ol><li>Tap a player to pass the bomb.</li><li>When it explodes, that player loses points.</li><li>Be the last player left to win.</li></ol><button id="instructions-ok" class="full">OK</button></section></div>`;
 }
 function setup() {
   const joining = mode === "join";
