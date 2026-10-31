@@ -11,6 +11,7 @@ let playerId = null;
 let state = null;
 let socket = null;
 let connectTimeout = null;
+let explosionRecoveryTimer = null;
 let lastPassSequence = 0;
 let connectionError = "";
 let isAnimatingPass = false;
@@ -122,6 +123,12 @@ function connect(action, data) {
 }
 function receiveState(nextState) {
   roomCode = nextState.roomCode;
+  clearTimeout(explosionRecoveryTimer);
+  if (nextState.phase === "explosion") {
+    explosionRecoveryTimer = setTimeout(() => {
+      if (state?.phase === "explosion") send({ type: "continue" });
+    }, 2400);
+  }
   const pass = nextState.lastPass;
   if (view === "game" && nextState.phase === "game" && pass && pass.seq > lastPassSequence && state) {
     lastPassSequence = pass.seq;
