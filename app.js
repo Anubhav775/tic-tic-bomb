@@ -75,7 +75,7 @@ function send(message) {
 function connect(action, data) {
   connectionError = "";
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(`${protocol}//${location.host}`);
+  socket = new WebSocket(`${protocol}//${location.host}/api/ws`);
   socket.addEventListener("open", () => socket.send(JSON.stringify({ type: action, name: nickname, avatar: selectedAvatar, ...data })));
   socket.addEventListener("message", event => {
     let message;

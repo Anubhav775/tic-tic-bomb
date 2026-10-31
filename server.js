@@ -193,6 +193,10 @@ wss.on("connection", socket => {
   socket.on("error", () => closePlayer(socket));
 });
 
-httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Tik Tik Bomb running at http://localhost:${port}`);
-});
+if (require.main === module) {
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`Tik Tik Bomb running at http://localhost:${port}`);
+  });
+}
+
+module.exports = httpServer;
