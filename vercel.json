@@ -1,4 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build"
+  "version": 2,
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "styles.css", "use": "@vercel/static" },
+    { "src": "app.js", "use": "@vercel/static" },
+    { "src": "avatar-bundle.js", "use": "@vercel/static" },
+    { "src": "bomb.png", "use": "@vercel/static" },
+    { "src": "api/ws.ts", "use": "@vercel/node" }
+  ]
 }
