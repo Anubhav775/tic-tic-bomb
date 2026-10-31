@@ -50,7 +50,7 @@ function game() {
     player.y = 50 + 39 * Math.sin(angle);
     return playerChip(player, index);
   }).join("");
-  return `<section class="screen game-screen">${titlebar()}${panel(`<div class="game-layout"><div class="board">${grid}</div><div class="game-actions">${players.length > 1 ? `<button id="random" class="full">Random</button>` : ""}</div></div>`, "game-panel")}</section>`;
+  return `<section class="screen game-screen">${titlebar()}${panel(`<div class="game-layout"><div class="board">${grid}</div></div>`, "game-panel")}</section>`;
 }
 function explosion() {
   const player = state?.players.find(candidate => candidate.id === state.explodedId);
@@ -145,14 +145,13 @@ function animatePass(pass, nextState) {
   const arcY = Math.min(fromY, toY) - Math.min(132, Math.max(76, Math.abs(toX - fromX) * .24));
   document.body.append(startNode);
   startNode.classList.add("bomb-in-flight");
-  startNode.style.left = `${fromX}px`;
-  startNode.style.top = `${fromY}px`;
-  startNode.style.transform = "translate(-50%,-50%)";
+  startNode.style.left = "0px";
+  startNode.style.top = "0px";
   const animation = startNode.animate([
-    { left: `${fromX}px`, top: `${fromY}px`, transform: "translate(-50%,-50%) rotate(-12deg)" },
-    { left: `${(fromX + toX) / 2}px`, top: `${arcY}px`, transform: "translate(-50%,-50%) rotate(165deg)" },
-    { left: `${toX}px`, top: `${toY}px`, transform: "translate(-50%,-50%) rotate(342deg)" }
-  ], { duration: 760, easing: "cubic-bezier(.32,.02,.22,1)" });
+    { transform: `translate3d(${fromX}px,${fromY}px,0) translate(-50%,-50%) rotate(-12deg)` },
+    { transform: `translate3d(${(fromX + toX) / 2}px,${arcY}px,0) translate(-50%,-50%) rotate(165deg)` },
+    { transform: `translate3d(${toX}px,${toY}px,0) translate(-50%,-50%) rotate(342deg)` }
+  ], { duration: 110, easing: "cubic-bezier(.2,.75,.35,1)", composite: "replace" });
   animation.onfinish = () => {
     startNode.remove();
     isAnimatingPass = false;
@@ -209,11 +208,6 @@ function bind() {
     if (isAnimatingPass) return;
     send({ type: "pass", targetId: button.dataset.targetId });
   }));
-  document.querySelector("#random")?.addEventListener("click", () => {
-    const choices = state.players.filter(player => player.alive && player.id !== state.holderId);
-    const target = choices[Math.floor(Math.random() * choices.length)];
-    if (target) send({ type: "pass", targetId: target.id });
-  });
   document.querySelector("#play-again")?.addEventListener("click", () => send({ type: "reset" }));
 }
 render();

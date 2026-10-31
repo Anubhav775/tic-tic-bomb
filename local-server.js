@@ -139,7 +139,7 @@ wss.on("connection", socket => {
       const room = {
         code, players: [], hostId: null, phase: "lobby", round: 1,
         holderId: null, explodedId: null, startingPoints: 20, penaltyPoints: 5,
-        lastPass: null, passSequence: 0, passLockedUntil: 0, fuseTimer: null, explosionTimer: null
+        lastPass: null, passSequence: 0, fuseTimer: null, explosionTimer: null
       };
       rooms.set(code, room);
       addPlayer(room, socket, message);
@@ -168,12 +168,11 @@ wss.on("connection", socket => {
       broadcast(room);
       scheduleFuse(room);
     } else if (message.type === "pass") {
-      if (room.phase !== "game" || !player.alive || Date.now() < room.passLockedUntil) return;
+      if (room.phase !== "game" || !player.alive) return;
       const target = room.players.find(current => current.id === message.targetId && current.alive);
       if (!target || target.id === player.id) return;
       const fromId = room.holderId;
       room.holderId = target.id;
-      room.passLockedUntil = Date.now() + 800;
       room.lastPass = { seq: ++room.passSequence, fromId, toId: target.id };
       broadcast(room);
     } else if (message.type === "reset") {
