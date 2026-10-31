@@ -7,5 +7,9 @@
     { "src": "avatar-bundle.js", "use": "@vercel/static" },
     { "src": "bomb.png", "use": "@vercel/static" },
     { "src": "api/ws.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/ws", "dest": "/api/ws.js" },
+    { "src": "/(.*)", "dest": "/$1" }
   ]
 }
