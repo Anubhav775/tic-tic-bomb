@@ -132,11 +132,11 @@ function connect(action, data) {
 }
 function receiveState(nextState) {
   roomCode = nextState.roomCode;
-  clearTimeout(explosionRecoveryTimer);
   if (nextState.phase === "explosion") {
-    explosionRecoveryTimer = setTimeout(() => {
-      if (state?.phase === "explosion") send({ type: "continue" });
-    }, 2400);
+    if (!explosionRecoveryTimer) explosionRecoveryTimer = setTimeout(requestExplosionSync, 2400);
+  } else {
+    clearTimeout(explosionRecoveryTimer);
+    explosionRecoveryTimer = null;
   }
   const pass = nextState.lastPass;
   if (nextState.phase !== "game") {
@@ -161,6 +161,12 @@ function receiveState(nextState) {
   view = nextState.phase;
   if (view === "lobby") history.replaceState(null, "", `${location.pathname}?room=${roomCode}`);
   render();
+}
+function requestExplosionSync() {
+  explosionRecoveryTimer = null;
+  if (state?.phase !== "explosion" || socket?.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: "continue" }));
+  explosionRecoveryTimer = setTimeout(requestExplosionSync, 1600);
 }
 function cancelPassAnimation() {
   clearTimeout(passAnimationTimeout);

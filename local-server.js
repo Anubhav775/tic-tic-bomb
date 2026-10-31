@@ -168,9 +168,12 @@ wss.on("connection", socket => {
       broadcast(room);
       scheduleFuse(room);
     } else if (message.type === "continue") {
-      if (room.phase !== "explosion") return;
-      clearTimeout(room.explosionTimer);
-      finishExplosion(room);
+      if (room.phase === "explosion") {
+        clearTimeout(room.explosionTimer);
+        finishExplosion(room);
+      } else if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "state", state: publicState(room) }));
+      }
     } else if (message.type === "pass") {
       if (room.phase !== "game" || !player.alive) return;
       const target = room.players.find(current => current.id === message.targetId && current.alive);
