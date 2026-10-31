@@ -15,6 +15,10 @@ let explosionRecoveryTimer = null;
 let lastPassSequence = 0;
 let connectionError = "";
 let isAnimatingPass = false;
+let passAnimation = null;
+let flightBomb = null;
+let pendingPassState = null;
+let passAnimationTimeout = null;
 
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function panel(content, extra = "") { return `<section class="panel ${extra}">${content}</section>`; }
@@ -130,6 +134,19 @@ function receiveState(nextState) {
     }, 2400);
   }
   const pass = nextState.lastPass;
+  if (nextState.phase !== "game") {
+    if (isAnimatingPass) cancelPassAnimation();
+    state = nextState;
+    view = nextState.phase;
+    if (view === "lobby") history.replaceState(null, "", `${location.pathname}?room=${roomCode}`);
+    render();
+    return;
+  }
+  if (isAnimatingPass) {
+    if (pass) lastPassSequence = Math.max(lastPassSequence, pass.seq);
+    pendingPassState = nextState;
+    return;
+  }
   if (view === "game" && nextState.phase === "game" && pass && pass.seq > lastPassSequence && state) {
     lastPassSequence = pass.seq;
     animatePass(pass, nextState);
@@ -140,6 +157,34 @@ function receiveState(nextState) {
   if (view === "lobby") history.replaceState(null, "", `${location.pathname}?room=${roomCode}`);
   render();
 }
+function cancelPassAnimation() {
+  clearTimeout(passAnimationTimeout);
+  passAnimationTimeout = null;
+  if (passAnimation && passAnimation.playState !== "finished") passAnimation.cancel();
+  passAnimation = null;
+  flightBomb?.remove();
+  flightBomb = null;
+  pendingPassState = null;
+  passAnimationState = null;
+  isAnimatingPass = false;
+}
+function finishPassAnimation() {
+  if (!isAnimatingPass) return;
+  clearTimeout(passAnimationTimeout);
+  passAnimationTimeout = null;
+  passAnimation = null;
+  flightBomb?.remove();
+  flightBomb = null;
+  isAnimatingPass = false;
+  const latestState = pendingPassState || passAnimationState;
+  pendingPassState = null;
+  passAnimationState = null;
+  if (!latestState) return;
+  state = latestState;
+  view = latestState.phase;
+  render();
+}
+let passAnimationState = null;
 function animatePass(pass, nextState) {
   const startNode = document.querySelector(`[data-player-id="${pass.fromId}"] .mobile-bomb`);
   const endNode = document.querySelector(`[data-player-id="${pass.toId}"]`);
@@ -147,6 +192,8 @@ function animatePass(pass, nextState) {
   const end = endNode?.getBoundingClientRect();
   if (!start || !end || !startNode.animate) { state = nextState; view = nextState.phase; render(); return; }
   isAnimatingPass = true;
+  flightBomb = startNode;
+  passAnimationState = nextState;
   const fromX = start.left + start.width / 2, fromY = start.top + start.height / 2;
   const toX = end.left + end.width / 2, toY = end.top + end.height / 2;
   const arcY = Math.min(fromY, toY) - Math.min(132, Math.max(76, Math.abs(toX - fromX) * .24));
@@ -154,18 +201,13 @@ function animatePass(pass, nextState) {
   startNode.classList.add("bomb-in-flight");
   startNode.style.left = "0px";
   startNode.style.top = "0px";
-  const animation = startNode.animate([
+  passAnimation = startNode.animate([
     { transform: `translate3d(${fromX}px,${fromY}px,0) translate(-50%,-50%) rotate(-12deg)` },
     { transform: `translate3d(${(fromX + toX) / 2}px,${arcY}px,0) translate(-50%,-50%) rotate(165deg)` },
     { transform: `translate3d(${toX}px,${toY}px,0) translate(-50%,-50%) rotate(342deg)` }
   ], { duration: 110, easing: "cubic-bezier(.2,.75,.35,1)", composite: "replace" });
-  animation.onfinish = () => {
-    startNode.remove();
-    isAnimatingPass = false;
-    state = nextState;
-    view = nextState.phase;
-    render();
-  };
+  passAnimation.onfinish = finishPassAnimation;
+  passAnimationTimeout = setTimeout(finishPassAnimation, 450);
 }
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
@@ -218,3 +260,6 @@ function bind() {
   document.querySelector("#play-again")?.addEventListener("click", () => send({ type: "reset" }));
 }
 render();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && isAnimatingPass) finishPassAnimation();
+});
