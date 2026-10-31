@@ -1,0 +1,187 @@
+const palette = ["#F8DDE5", "#D8F1E4", "#FFF0BF", "#E7E0F7", "#F9DFCC", "#D7F0F1", "#DDECCB", "#F8E0C7"];
+const avatars = window.AVATARS || [];
+const app = document.querySelector("#app");
+const queryRoom = new URLSearchParams(location.search).get("room");
+let view = queryRoom ? "setup" : "home";
+let mode = queryRoom ? "join" : null;
+let roomCode = queryRoom || "";
+let nickname = "";
+let selectedAvatar = 0;
+let playerId = null;
+let state = null;
+let socket = null;
+let lastPassSequence = 0;
+let connectionError = "";
+let isAnimatingPass = false;
+
+function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function panel(content, extra = "") { return `<section class="panel ${extra}">${content}</section>`; }
+function titlebar() { return `<div class="topline"><span class="round">Round ${state?.round || 1}</span><span></span></div>`; }
+function avatarChoices() {
+  return avatars.map((avatar, index) => `<button type="button" class="avatar-choice ${selectedAvatar === index ? "selected" : ""}" data-avatar="${index}" aria-label="${escapeHtml(avatar.label)}" aria-pressed="${selectedAvatar === index}"><span class="avatar-preview" data-avatar-render="${index}"></span></button>`).join("");
+}
+function home() {
+  return `<section class="screen home">${panel(`<h1 class="brand">Tik Tik Bomb</h1><div class="entry-actions"><button id="create-choice" class="full">Create Room</button><button id="join-choice" class="full secondary">Join Room</button></div>`)}</section>`;
+}
+function setup() {
+  const joining = mode === "join";
+  return `<section class="screen home">${panel(`<h1 class="brand">Tik Tik Bomb</h1><div class="setup-title">${joining ? "Join Room" : "Create Room"}</div><form id="setup-form" class="form-row"><input id="nickname" maxlength="14" placeholder="Nickname" value="${escapeHtml(nickname)}" aria-label="Nickname" required><div class="avatar-picker" aria-label="Avatar">${avatarChoices()}</div>${joining ? `<input id="room-input" inputmode="numeric" maxlength="4" placeholder="4 digit code" value="${escapeHtml(roomCode)}" aria-label="Room code" required>` : ""}<button>${joining ? "Join" : "Create Room"}</button></form><button id="back" class="full secondary back-button">Back</button>${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}`)}</section>`;
+}
+function lobby() {
+  const players = state?.players || [];
+  const chips = players.map(player => `<div class="player-chip" style="background:${player.color}"><span class="avatar" data-avatar-render="${player.avatar}"></span><span class="name">${escapeHtml(player.name)}</span><span class="score">${player.id === state.hostId ? "Host" : ""}</span></div>`).join("");
+  const isHost = state?.hostId === playerId;
+  const shareUrl = `${location.origin}${location.pathname}?room=${state?.roomCode || ""}`;
+  return `<section class="screen">${titlebar()}${panel(`<div class="code-block"><strong class="room-code">${escapeHtml(state?.roomCode || roomCode)}</strong><button id="copy-code" class="secondary">Copy</button></div><div class="share-row"><button id="share-link" class="full secondary">Share link</button></div><div class="chips">${chips}</div>${isHost ? `<div class="settings"><label class="setting">Starting points<input id="starting" type="number" min="1" max="999" value="${state?.startingPoints || 20}"></label><label class="setting">Penalty<input id="penalty" type="number" min="1" max="999" value="${state?.penaltyPoints || 5}"></label></div><button id="start" class="full" ${players.length < 3 ? "disabled" : ""}>Start the Game</button>` : ""}${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}<span class="prototype-only">${escapeHtml(shareUrl)}</span>`)}</section>`;
+}
+function playerChip(player, index) {
+  const held = player.id === state.holderId;
+  const interactive = player.alive && !held && !isAnimatingPass;
+  const tag = interactive ? "button" : "div";
+  return `<${tag} class="player-chip ${held ? "holder" : ""}" data-player-id="${player.id}" style="--x:${player.x}%;--y:${player.y}%;background:${player.color}" ${interactive ? `data-target-id="${player.id}"` : ""}><span class="avatar" data-avatar-render="${player.avatar}"></span><span class="name">${escapeHtml(player.name)}</span>${held ? `<img class="mobile-bomb" src="bomb.png" alt="Bomb">` : ""}<span class="score">${player.points}</span></${tag}>`;
+}
+function game() {
+  const players = (state?.players || []).filter(player => player.alive);
+  const count = players.length;
+  const grid = players.map((player, index) => {
+    const angle = 2 * Math.PI * index / count - Math.PI / 2;
+    player.x = 50 + 39 * Math.cos(angle);
+    player.y = 50 + 39 * Math.sin(angle);
+    return playerChip(player, index);
+  }).join("");
+  return `<section class="screen game-screen">${titlebar()}${panel(`<div class="game-layout"><div class="board">${grid}</div><div class="game-actions">${players.length > 1 ? `<button id="random" class="full">Random</button>` : ""}</div></div>`, "game-panel")}</section>`;
+}
+function explosion() {
+  const player = state?.players.find(candidate => candidate.id === state.explodedId);
+  const result = player?.alive ? `−${state.penaltyPoints}` : "0";
+  return `<div class="explosion-flash"></div><section class="screen explosion">${titlebar()}${panel(`<div class="blast-scene"><div class="blast-wave"></div><div class="blast-rays"></div><img class="game-bomb shake" src="bomb.png" alt="Bomb blast"></div><h2>${escapeHtml(player?.name || "")}${player?.alive ? "" : " Out"}</h2><div class="sub-label">${result}</div>`)}</section>`;
+}
+function finalBoard() {
+  const ranked = [...(state?.players || [])].sort((a, b) => Number(b.alive) - Number(a.alive) || b.points - a.points);
+  const winner = ranked.find(player => player.alive) || ranked[0];
+  const rows = ranked.map((player, index) => `<div class="scoreboard"><span>${index + 1}</span><span>${escapeHtml(player.name)}</span><span class="pts">${player.points}</span></div>`).join("");
+  const winMessage = winner?.id === playerId ? "You won!" : `${winner?.name || ""} won!`;
+  return `<section class="screen">${titlebar()}${panel(`<div class="winner-panel"><div class="congrats">Congratulations</div><h2 class="winner">${escapeHtml(winner?.name || "")}</h2><div class="win-message">${escapeHtml(winMessage)}</div></div><div class="standings">${rows}</div>${state?.hostId === playerId ? `<button id="play-again" class="full">Play again</button>` : ""}`)}</section>`;
+}
+function render() {
+  app.innerHTML = view === "home" ? home() : view === "setup" ? setup() : view === "lobby" ? lobby() : view === "game" ? game() : view === "explosion" ? explosion() : finalBoard();
+  window.paintAvataaars?.(app);
+  bind();
+}
+function send(message) {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  else { connectionError = "Connection unavailable"; render(); }
+}
+function connect(action, data) {
+  connectionError = "";
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  socket = new WebSocket(`${protocol}//${location.host}`);
+  socket.addEventListener("open", () => socket.send(JSON.stringify({ type: action, name: nickname, avatar: selectedAvatar, ...data })));
+  socket.addEventListener("message", event => {
+    let message;
+    try { message = JSON.parse(event.data); } catch { return; }
+    if (message.type === "welcome") playerId = message.playerId;
+    if (message.type === "error") { connectionError = message.message; if (view === "setup") render(); }
+    if (message.type === "state") receiveState(message.state);
+  });
+  socket.addEventListener("close", () => {
+    if (view !== "home" && view !== "setup") { connectionError = "Connection lost"; render(); }
+  });
+}
+function receiveState(nextState) {
+  roomCode = nextState.roomCode;
+  const pass = nextState.lastPass;
+  if (view === "game" && nextState.phase === "game" && pass && pass.seq > lastPassSequence && state) {
+    lastPassSequence = pass.seq;
+    animatePass(pass, nextState);
+    return;
+  }
+  state = nextState;
+  view = nextState.phase;
+  if (view === "lobby") history.replaceState(null, "", `${location.pathname}?room=${roomCode}`);
+  render();
+}
+function animatePass(pass, nextState) {
+  const startNode = document.querySelector(`[data-player-id="${pass.fromId}"] .mobile-bomb`);
+  const endNode = document.querySelector(`[data-player-id="${pass.toId}"]`);
+  const start = startNode?.getBoundingClientRect();
+  const end = endNode?.getBoundingClientRect();
+  if (!start || !end || !startNode.animate) { state = nextState; view = nextState.phase; render(); return; }
+  isAnimatingPass = true;
+  const fromX = start.left + start.width / 2, fromY = start.top + start.height / 2;
+  const toX = end.left + end.width / 2, toY = end.top + end.height / 2;
+  const arcY = Math.min(fromY, toY) - Math.min(132, Math.max(76, Math.abs(toX - fromX) * .24));
+  document.body.append(startNode);
+  startNode.classList.add("bomb-in-flight");
+  startNode.style.left = `${fromX}px`;
+  startNode.style.top = `${fromY}px`;
+  startNode.style.transform = "translate(-50%,-50%)";
+  const animation = startNode.animate([
+    { left: `${fromX}px`, top: `${fromY}px`, transform: "translate(-50%,-50%) rotate(-12deg)" },
+    { left: `${(fromX + toX) / 2}px`, top: `${arcY}px`, transform: "translate(-50%,-50%) rotate(165deg)" },
+    { left: `${toX}px`, top: `${toY}px`, transform: "translate(-50%,-50%) rotate(342deg)" }
+  ], { duration: 760, easing: "cubic-bezier(.32,.02,.22,1)" });
+  animation.onfinish = () => {
+    startNode.remove();
+    isAnimatingPass = false;
+    state = nextState;
+    view = nextState.phase;
+    render();
+  };
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+function bind() {
+  document.querySelector("#create-choice")?.addEventListener("click", () => { mode = "create"; view = "setup"; render(); });
+  document.querySelector("#join-choice")?.addEventListener("click", () => { mode = "join"; view = "setup"; render(); });
+  document.querySelector("#back")?.addEventListener("click", () => { view = "home"; mode = null; connectionError = ""; history.replaceState(null, "", location.pathname); render(); });
+  document.querySelectorAll("[data-avatar]").forEach(button => button.addEventListener("click", () => {
+    selectedAvatar = Number(button.dataset.avatar);
+    document.querySelectorAll("[data-avatar]").forEach(choice => {
+      const selected = Number(choice.dataset.avatar) === selectedAvatar;
+      choice.classList.toggle("selected", selected);
+      choice.setAttribute("aria-pressed", String(selected));
+    });
+  }));
+  document.querySelector("#setup-form")?.addEventListener("submit", event => {
+    event.preventDefault();
+    nickname = document.querySelector("#nickname").value.trim();
+    if (!nickname) { connectionError = "Enter your name"; render(); return; }
+    if (mode === "create") connect("create", {});
+    else {
+      roomCode = document.querySelector("#room-input").value.replace(/\D/g, "").slice(0, 4);
+      if (roomCode.length !== 4) { connectionError = "Enter a 4 digit code"; render(); return; }
+      connect("join", { code: roomCode });
+    }
+  });
+  document.querySelector("#copy-code")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const copied = await copyText(state.roomCode);
+    if (copied) { button.textContent = "Copied"; setTimeout(() => { if (button.isConnected) button.textContent = "Copy"; }, 1000); }
+  });
+  document.querySelector("#share-link")?.addEventListener("click", async event => {
+    const button = event.currentTarget;
+    const url = `${location.origin}${location.pathname}?room=${state.roomCode}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "Tik Tik Bomb", url });
+      else if (await copyText(url)) button.textContent = "Link copied";
+    } catch { /* Share sheet closed */ }
+  });
+  document.querySelector("#start")?.addEventListener("click", () => send({
+    type: "start",
+    startingPoints: Number(document.querySelector("#starting").value),
+    penaltyPoints: Number(document.querySelector("#penalty").value)
+  }));
+  document.querySelectorAll("[data-target-id]").forEach(button => button.addEventListener("click", () => {
+    if (isAnimatingPass) return;
+    send({ type: "pass", targetId: button.dataset.targetId });
+  }));
+  document.querySelector("#random")?.addEventListener("click", () => {
+    const choices = state.players.filter(player => player.alive && player.id !== state.holderId);
+    const target = choices[Math.floor(Math.random() * choices.length)];
+    if (target) send({ type: "pass", targetId: target.id });
+  });
+  document.querySelector("#play-again")?.addEventListener("click", () => send({ type: "reset" }));
+}
+render();
