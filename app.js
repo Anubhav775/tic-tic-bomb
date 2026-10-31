@@ -10,6 +10,7 @@ let selectedAvatar = 0;
 let playerId = null;
 let state = null;
 let socket = null;
+let connectTimeout = null;
 let lastPassSequence = 0;
 let connectionError = "";
 let isAnimatingPass = false;
@@ -74,17 +75,48 @@ function send(message) {
 }
 function connect(action, data) {
   connectionError = "";
+  clearTimeout(connectTimeout);
+  const submit = document.querySelector("#setup-form button[type='submit'], #setup-form button:not([type])");
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = action === "create" ? "Creating…" : "Joining…";
+  }
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(`${protocol}//${location.host}/api/ws`);
+  connectTimeout = setTimeout(() => {
+    if (view === "setup") {
+      connectionError = "Connection unavailable";
+      socket?.close();
+      render();
+    }
+  }, 10000);
   socket.addEventListener("open", () => socket.send(JSON.stringify({ type: action, name: nickname, avatar: selectedAvatar, ...data })));
   socket.addEventListener("message", event => {
     let message;
     try { message = JSON.parse(event.data); } catch { return; }
     if (message.type === "welcome") playerId = message.playerId;
-    if (message.type === "error") { connectionError = message.message; if (view === "setup") render(); }
-    if (message.type === "state") receiveState(message.state);
+    if (message.type === "error") {
+      clearTimeout(connectTimeout);
+      connectionError = message.message;
+      if (view === "setup") render();
+    }
+    if (message.type === "state") {
+      clearTimeout(connectTimeout);
+      receiveState(message.state);
+    }
+  });
+  socket.addEventListener("error", () => {
+    clearTimeout(connectTimeout);
+    connectionError = "Connection unavailable";
+    if (view === "setup") render();
   });
   socket.addEventListener("close", () => {
+    clearTimeout(connectTimeout);
+    if (view === "setup" && !connectionError) {
+      connectionError = "Connection unavailable";
+      render();
+      return;
+    }
     if (view !== "home" && view !== "setup") { connectionError = "Connection lost"; render(); }
   });
 }
