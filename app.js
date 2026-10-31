@@ -15,6 +15,7 @@ let explosionRecoveryTimer = null;
 let lastPassSequence = 0;
 let connectionError = "";
 let isAnimatingPass = false;
+let instructionsOpen = true;
 let passAnimation = null;
 let flightBomb = null;
 let pendingPassState = null;
@@ -28,6 +29,10 @@ function avatarChoices() {
 }
 function home() {
   return `<section class="screen home">${panel(`<h1 class="brand">Tik Tik Bomb</h1><div class="entry-actions"><button id="create-choice" class="full">Create Room</button><button id="join-choice" class="full secondary">Join Room</button></div>`)}</section>`;
+}
+function instructions() {
+  if (!instructionsOpen) return "";
+  return `<div class="instructions-backdrop"><section class="instructions-card" role="dialog" aria-modal="true" aria-labelledby="instructions-title"><h2 id="instructions-title">कैसे खेलें</h2><ol><li>किसी खिलाड़ी पर टैप करके बम भेजो।</li><li>बम फूटे तो उसके पॉइंट घटेंगे।</li><li>आख़िरी बचा खिलाड़ी जीतेगा।</li></ol><button id="instructions-ok" class="full">OK</button></section></div>`;
 }
 function setup() {
   const joining = mode === "join";
@@ -70,7 +75,7 @@ function finalBoard() {
   return `<section class="screen">${titlebar()}${panel(`<div class="winner-panel"><div class="congrats">Congratulations</div><h2 class="winner">${escapeHtml(winner?.name || "")}</h2><div class="win-message">${escapeHtml(winMessage)}</div></div><div class="standings">${rows}</div>${state?.hostId === playerId ? `<button id="play-again" class="full">Play again</button>` : ""}`)}</section>`;
 }
 function render() {
-  app.innerHTML = view === "home" ? home() : view === "setup" ? setup() : view === "lobby" ? lobby() : view === "game" ? game() : view === "explosion" ? explosion() : finalBoard();
+  app.innerHTML = (view === "home" ? home() : view === "setup" ? setup() : view === "lobby" ? lobby() : view === "game" ? game() : view === "explosion" ? explosion() : finalBoard()) + instructions();
   window.paintAvataaars?.(app);
   bind();
 }
@@ -213,6 +218,7 @@ async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
 function bind() {
+  document.querySelector("#instructions-ok")?.addEventListener("click", () => { instructionsOpen = false; render(); });
   document.querySelector("#create-choice")?.addEventListener("click", () => { mode = "create"; view = "setup"; render(); });
   document.querySelector("#join-choice")?.addEventListener("click", () => { mode = "join"; view = "setup"; render(); });
   document.querySelector("#back")?.addEventListener("click", () => { view = "home"; mode = null; connectionError = ""; history.replaceState(null, "", location.pathname); render(); });
