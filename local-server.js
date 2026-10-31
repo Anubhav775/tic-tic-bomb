@@ -64,17 +64,17 @@ function addPlayer(room, socket, data) {
   if (!name) return sendError(socket, "Enter your name");
   if (room.players.length >= MAX_PLAYERS) return sendError(socket, `Room is full (max ${MAX_PLAYERS})`);
   const player = {
-    id: randomUUID(), socket, name,
+    id: randomUUID(), sessionToken: randomUUID(), socket, name,
     avatar: Math.max(0, Math.min(19, Number(data.avatar) || 0)),
     color: ["#F8DDE5", "#D8F1E4", "#FFF0BF", "#E7E0F7", "#F9DFCC", "#D7F0F1", "#DDECCB", "#F8E0C7"][room.players.length % 8],
-    points: room.startingPoints, alive: true
+    points: room.startingPoints, alive: true, disconnectTimer: null
   };
   player.socket = socket;
   socket.playerId = player.id;
   socket.roomCode = room.code;
   room.players.push(player);
   if (!room.hostId) room.hostId = player.id;
-  socket.send(JSON.stringify({ type: "welcome", playerId: player.id }));
+  socket.send(JSON.stringify({ type: "welcome", playerId: player.id, sessionToken: player.sessionToken, roomCode: room.code }));
   broadcast(room);
 }
 function pickHolder(room) {
@@ -110,20 +110,19 @@ function scheduleFuse(room) {
     room.explosionTimer = setTimeout(() => finishExplosion(room), 1900);
   }, delay);
 }
-function closePlayer(socket) {
-  if (socket.roomClosed) return;
-  socket.roomClosed = true;
-  const room = rooms.get(socket.roomCode);
-  if (!room) return;
-  room.players = room.players.filter(player => player.id !== socket.playerId);
+function removePlayer(room, playerId) {
+  const leaving = room.players.find(player => player.id === playerId);
+  if (!leaving) return;
+  clearTimeout(leaving.disconnectTimer);
+  room.players = room.players.filter(player => player.id !== playerId);
   if (!room.players.length) {
     clearTimeout(room.fuseTimer);
     clearTimeout(room.explosionTimer);
     rooms.delete(room.code);
     return;
   }
-  if (room.hostId === socket.playerId) room.hostId = room.players[0].id;
-  if (room.holderId === socket.playerId && room.phase === "game") pickHolder(room);
+  if (room.hostId === playerId) room.hostId = room.players[0].id;
+  if (room.holderId === playerId && room.phase === "game") pickHolder(room);
   if (room.phase === "game" && room.players.filter(player => player.alive).length <= 1) {
     clearTimeout(room.fuseTimer);
     room.phase = "final";
@@ -131,11 +130,38 @@ function closePlayer(socket) {
   }
   broadcast(room);
 }
+function closePlayer(socket) {
+  if (socket.roomClosed) return;
+  socket.roomClosed = true;
+  const room = rooms.get(socket.roomCode);
+  if (!room) return;
+  const player = room.players.find(current => current.id === socket.playerId);
+  if (!player || player.socket !== socket) return;
+  clearTimeout(player.disconnectTimer);
+  player.disconnectTimer = setTimeout(() => removePlayer(room, player.id), 15000);
+}
 
 wss.on("connection", socket => {
   socket.on("message", raw => {
     let message;
     try { message = JSON.parse(raw.toString()); } catch { return sendError(socket, "Invalid request"); }
+    if (message.type === "ping") {
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "pong" }));
+      return;
+    }
+    if (message.type === "resume") {
+      const room = rooms.get(String(message.roomCode || ""));
+      const player = room?.players.find(current => current.sessionToken === message.sessionToken);
+      if (!room || !player) return sendError(socket, "Session expired");
+      clearTimeout(player.disconnectTimer);
+      player.disconnectTimer = null;
+      player.socket = socket;
+      socket.playerId = player.id;
+      socket.roomCode = room.code;
+      socket.send(JSON.stringify({ type: "welcome", playerId: player.id, sessionToken: player.sessionToken, roomCode: room.code }));
+      broadcast(room);
+      return;
+    }
     if (message.type === "create") {
       if (!normalizeName(message.name)) return sendError(socket, "Enter your name");
       const code = makeCode();

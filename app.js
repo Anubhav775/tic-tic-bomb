@@ -5,9 +5,14 @@ const queryRoom = new URLSearchParams(location.search).get("room");
 let view = queryRoom ? "setup" : "home";
 let mode = queryRoom ? "join" : null;
 let roomCode = queryRoom || "";
-let nickname = "";
+let nickname = (() => { try { return localStorage.getItem("ttb-nickname") || ""; } catch { return ""; } })();
 let selectedAvatar = 0;
 let playerId = null;
+let sessionToken = (() => { try { return sessionStorage.getItem("ttb-session-token") || ""; } catch { return ""; } })();
+let reconnectTimer = null;
+let heartbeatInterval = null;
+let lastPongAt = 0;
+let reconnectAttempt = 0;
 let state = null;
 let socket = null;
 let connectTimeout = null;
@@ -62,19 +67,19 @@ function game() {
     player.y = 50 + radius * Math.sin(angle);
     return playerChip(player, index, chipWidth);
   }).join("");
-  return `<section class="screen game-screen">${titlebar()}${panel(`<div class="game-layout"><div class="board">${grid}</div></div>`, "game-panel")}</section>`;
+  return `<section class="screen game-screen">${titlebar()}${panel(`<div class="game-layout"><div class="board">${grid}</div></div>${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}`, "game-panel")}</section>`;
 }
 function explosion() {
   const player = state?.players.find(candidate => candidate.id === state.explodedId);
   const result = player?.alive ? `−${state.penaltyPoints}` : "0";
-  return `<div class="explosion-flash"></div><section class="screen explosion">${titlebar()}${panel(`<div class="blast-scene"><div class="blast-wave"></div><div class="blast-rays"></div><img class="game-bomb shake" src="bomb.png" alt="Bomb blast"></div><h2>${escapeHtml(player?.name || "")}${player?.alive ? "" : " Out"}</h2><div class="sub-label">${result}</div>`)}</section>`;
+  return `<div class="explosion-flash"></div><section class="screen explosion">${titlebar()}${panel(`<div class="blast-scene"><div class="blast-wave"></div><div class="blast-rays"></div><img class="game-bomb shake" src="bomb.png" alt="Bomb blast"></div><h2>${escapeHtml(player?.name || "")}${player?.alive ? "" : " Out"}</h2><div class="sub-label">${result}</div>${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}`)}</section>`;
 }
 function finalBoard() {
   const ranked = [...(state?.players || [])].sort((a, b) => Number(b.alive) - Number(a.alive) || b.points - a.points);
   const winner = ranked.find(player => player.alive) || ranked[0];
   const rows = ranked.map((player, index) => `<div class="scoreboard"><span>${index + 1}</span><span>${escapeHtml(player.name)}</span><span class="pts">${player.points}</span></div>`).join("");
   const winMessage = winner?.id === playerId ? "You won!" : `${winner?.name || ""} won!`;
-  return `<section class="screen">${titlebar()}${panel(`<div class="winner-panel"><div class="congrats">Congratulations</div><h2 class="winner">${escapeHtml(winner?.name || "")}</h2><div class="win-message">${escapeHtml(winMessage)}</div></div><div class="standings">${rows}</div><button id="play-again" class="full">Play again</button>`)}</section>`;
+  return `<section class="screen">${titlebar()}${panel(`<div class="winner-panel"><div class="congrats">Congratulations</div><h2 class="winner">${escapeHtml(winner?.name || "")}</h2><div class="win-message">${escapeHtml(winMessage)}</div></div><div class="standings">${rows}</div>${connectionError ? `<div class="error-message">${escapeHtml(connectionError)}</div>` : ""}<button id="play-again" class="full">Play again</button>`)}</section>`;
 }
 function render() {
   app.innerHTML = (view === "home" ? home() : view === "setup" ? setup() : view === "lobby" ? lobby() : view === "game" ? game() : view === "explosion" ? explosion() : finalBoard()) + instructions();
@@ -85,51 +90,85 @@ function send(message) {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
   else { connectionError = "Connection unavailable"; render(); }
 }
-function connect(action, data) {
+function connect(action, data = {}, resume = false) {
   connectionError = "";
   clearTimeout(connectTimeout);
+  clearTimeout(reconnectTimer);
+  clearInterval(heartbeatInterval);
   const submit = document.querySelector("#setup-form button[type='submit'], #setup-form button:not([type])");
   if (submit) {
     submit.disabled = true;
     submit.textContent = action === "create" ? "Creating…" : "Joining…";
   }
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(`${protocol}//${location.host}/api/ws`);
+  const currentSocket = new WebSocket(`${protocol}//${location.host}/api/ws`);
+  socket = currentSocket;
   connectTimeout = setTimeout(() => {
-    if (view === "setup") {
+    if (currentSocket === socket && currentSocket.readyState !== WebSocket.OPEN) {
       connectionError = "Connection unavailable";
-      socket?.close();
+      currentSocket.close();
       render();
     }
   }, 10000);
-  socket.addEventListener("open", () => socket.send(JSON.stringify({ type: action, name: nickname, avatar: selectedAvatar, ...data })));
-  socket.addEventListener("message", event => {
+  currentSocket.addEventListener("open", () => {
+    clearTimeout(connectTimeout);
+    reconnectAttempt = 0;
+    lastPongAt = Date.now();
+    const request = resume
+      ? { type: "resume", roomCode, sessionToken }
+      : { type: action, name: nickname, avatar: selectedAvatar, ...data };
+    currentSocket.send(JSON.stringify(request));
+    heartbeatInterval = setInterval(() => {
+      if (currentSocket !== socket || currentSocket.readyState !== WebSocket.OPEN) return;
+      if (Date.now() - lastPongAt > 45000) { currentSocket.close(); return; }
+      currentSocket.send(JSON.stringify({ type: "ping" }));
+    }, 20000);
+  });
+  currentSocket.addEventListener("message", event => {
     let message;
     try { message = JSON.parse(event.data); } catch { return; }
-    if (message.type === "welcome") playerId = message.playerId;
+    if (message.type === "pong") { lastPongAt = Date.now(); return; }
+    if (message.type === "welcome") {
+      playerId = message.playerId;
+      sessionToken = message.sessionToken || sessionToken;
+      roomCode = message.roomCode || roomCode;
+      try { if (sessionToken) sessionStorage.setItem("ttb-session-token", sessionToken); } catch { /* Storage unavailable */ }
+      connectionError = "";
+    }
     if (message.type === "error") {
       clearTimeout(connectTimeout);
       connectionError = message.message;
-      if (view === "setup") render();
+      render();
+      if (resume && message.message === "Session expired") currentSocket.close();
     }
     if (message.type === "state") {
       clearTimeout(connectTimeout);
       receiveState(message.state);
     }
   });
-  socket.addEventListener("error", () => {
+  currentSocket.addEventListener("error", () => {
     clearTimeout(connectTimeout);
     connectionError = "Connection unavailable";
-    if (view === "setup") render();
+    render();
   });
-  socket.addEventListener("close", () => {
+  currentSocket.addEventListener("close", () => {
+    if (currentSocket !== socket) return;
     clearTimeout(connectTimeout);
+    clearInterval(heartbeatInterval);
     if (view === "setup" && !connectionError) {
       connectionError = "Connection unavailable";
       render();
       return;
     }
-    if (view !== "home" && view !== "setup") { connectionError = "Connection lost"; render(); }
+    if (view !== "home" && view !== "setup" && sessionToken) {
+      connectionError = "Reconnecting…";
+      render();
+      const delay = Math.min(5000, 500 * (2 ** reconnectAttempt++));
+      reconnectTimer = setTimeout(() => connect("resume", {}, true), delay);
+    } else if (view !== "home" && view !== "setup") {
+      connectionError = "Connection lost";
+      render();
+    }
   });
 }
 function receiveState(nextState) {
@@ -230,6 +269,10 @@ function bind() {
   document.querySelector("#create-choice")?.addEventListener("click", () => { mode = "create"; view = "setup"; render(); });
   document.querySelector("#join-choice")?.addEventListener("click", () => { mode = "join"; view = "setup"; render(); });
   document.querySelector("#back")?.addEventListener("click", () => { view = "home"; mode = null; connectionError = ""; history.replaceState(null, "", location.pathname); render(); });
+  document.querySelector("#nickname")?.addEventListener("input", event => {
+    nickname = event.currentTarget.value;
+    try { localStorage.setItem("ttb-nickname", nickname); } catch { /* Storage unavailable */ }
+  });
   document.querySelectorAll("[data-avatar]").forEach(button => button.addEventListener("click", () => {
     selectedAvatar = Number(button.dataset.avatar);
     document.querySelectorAll("[data-avatar]").forEach(choice => {
@@ -242,6 +285,7 @@ function bind() {
     event.preventDefault();
     nickname = document.querySelector("#nickname").value.trim();
     if (!nickname) { connectionError = "Enter your name"; render(); return; }
+    try { localStorage.setItem("ttb-nickname", nickname); } catch { /* Storage unavailable */ }
     if (mode === "create") connect("create", {});
     else {
       roomCode = document.querySelector("#room-input").value.replace(/\D/g, "").slice(0, 4);
